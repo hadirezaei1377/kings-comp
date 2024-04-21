@@ -9,10 +9,13 @@ type Account struct {
 	FirstName string    `json:"first_name"`
 	Username  string    `json:"username"`
 	JoinedAt  time.Time `json:"joined_at"`
-
 	DisplayName string `json:"display_name"`
+	State       string `json:"state"`
 }
 
 func (a Account) EntityID() ID {
 	return NewID("account", a.ID)
 }
+
+
+
