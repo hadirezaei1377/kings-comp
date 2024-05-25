@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"kings-comp/internal/entity"
+	"kings-comp/internal/telegram/teleprompt"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,7 +35,7 @@ func (t *Telegram) registerMiddleware(next telebot.HandlerFunc) telebot.HandlerF
 }
 
 func (t *Telegram) onError(err error, c telebot.Context) {
-	if errors.Is(err, ErrInputTimeout) {
+	if errors.Is(err, ErrInputTimeout) || errors.Is(err, teleprompt.ErrIsCanceled) {
 		return
 	}
 

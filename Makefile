@@ -8,6 +8,10 @@ test:
 serve:
 	go run main.go serve
 
+dev:
+	templ generate
+	go run main.go serve
+
 scale:
 	bash test-scale.sh
 
@@ -16,3 +20,5 @@ dev:generate
 
 generate:
 	templ generate
+
+	

@@ -1,41 +1,72 @@
 package cmd
 
 import (
-	"log"
+	"context"
+	"kings-comp/internal/config"
+	"kings-comp/internal/matchmaking"
+	"kings-comp/internal/repository"
+	"kings-comp/internal/repository/redis"
+	"kings-comp/internal/service"
+	"kings-comp/internal/telegram"
+	"kings-comp/internal/webapp"
 	"os"
-	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"gopkg.in/telebot.v3"
+	"golang.ngrok.com/ngrok"
+	ngrokconfig "golang.ngrok.com/ngrok/config"
 )
 
+// serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "serve the application",
-	Run: func(cmd *cobra.Command, args []string) {
-		serve()
-	},
+	Short: "Serve the telegram bot",
+	Run:   serve,
 }
 
-func serve() {
+func serve(_ *cobra.Command, _ []string) {
 	_ = godotenv.Load()
-	pref := telebot.Settings{
-		Token:  os.Getenv("BOT_API"),
-		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
+	// set up repositories
+	redisClient, err := redis.NewRedisClient(os.Getenv("REDIS_URL"))
+	if err != nil {
+		logrus.WithError(err).Fatalln("couldn't connect to te redis server")
+	}
+	accountRepository := repository.NewAccountRedisRepository(redisClient)
+	lobbyRepository := repository.NewLobbyRedisRepository(redisClient)
+	// set up app
+	app := service.NewApp(
+		service.NewAccountService(accountRepository),
+		service.NewLobbyService(lobbyRepository),
+	)
+
+	mm := matchmaking.NewRedisMatchmaking(redisClient, lobbyRepository)
+
+	tg, err := telegram.NewTelegram(app, mm, os.Getenv("BOT_API"))
+	if err != nil {
+		logrus.WithError(err).Fatalln("couldn't connect to the telegram server")
 	}
 
-	b, err := telebot.NewBot(pref)
-	if err != nil {
-		log.Fatal(err)
+	go tg.Start()
+
+	wa := webapp.NewWebApp(app, ":8080")
+
+	// use ngrok if its local
+	if os.Getenv("ENV") == "local" {
+		listener, err := ngrok.Listen(context.Background(),
+			ngrokconfig.HTTPEndpoint(),
+			ngrok.WithAuthtokenFromEnv(),
+		)
+		if err != nil {
+			logrus.WithError(err).Fatalln("couldn't set up ngrok")
+		}
+		config.Default.WebAppAddr = "https://" + listener.Addr().String()
+		logrus.WithField("ngrok_addr", config.Default.WebAppAddr).Info("local server is now online")
+		logrus.WithError(wa.StartDev(listener)).Errorln("http server error")
 		return
 	}
 
-	b.Handle(telebot.OnText, func(tCtx telebot.Context) error {
-		return tCtx.Reply("Hello World")
-	})
-
-	b.Start()
+	wa.Start()
 }
 
 func init() {
